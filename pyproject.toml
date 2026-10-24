@@ -1,0 +1,10 @@
+[project]
+name = "trustlincc"
+version = "0.1.0"
+description = "A simulated code-bounty task and review workflow agent."
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "certifi>=2024.2.2",
+    "uagents>=0.25.5",
+]

@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.py[cod]
+.env
+*.env
+.avctl/
+modal_runner/.modal
+modal_runner/__pycache__/
+runner-secrets.env
+agentverse-secrets.env
+private_keys.json
+*_data.json

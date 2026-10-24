@@ -1,0 +1,2 @@
+modal>=1.0,<2
+fastapi[standard]>=0.115,<1
