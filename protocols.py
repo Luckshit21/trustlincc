@@ -126,6 +126,10 @@ def parse_command(text: str) -> tuple[str, str, str] | None:
     return command, argument, remainder
 
 
+def strip_leading_agent_mentions(text: str) -> str:
+    return re.sub(r"^(?:\*\*)?@[A-Za-z0-9_.-]+(?:\*\*)?\s*", "", text).strip()
+
+
 def get_task(ctx: Context, task_id: str) -> dict[str, Any] | None:
     return ctx.storage.get(f"{TASK_STORAGE_PREFIX}{task_id.upper()}")
 
@@ -343,7 +347,7 @@ async def handle_message(ctx: Context, sender: str, msg: ChatMessage) -> None:
             acknowledged_msg_id=msg.msg_id,
         ),
     )
-    text = msg.text().strip()
+    text = strip_leading_agent_mentions(msg.text().strip())
     if not text:
         return
 

@@ -21,6 +21,7 @@ from protocols import (
     parse_task_request,
     respond_to_question,
     run_submission_tests,
+    strip_leading_agent_mentions,
 )
 
 
@@ -49,6 +50,16 @@ def make_message(text):
 
 
 class TaskRequestTests(unittest.TestCase):
+    def test_strips_agentverse_chat_mentions(self):
+        self.assertEqual(
+            strip_leading_agent_mentions("@skeleton-chat-ag-184 create task"),
+            "create task",
+        )
+        self.assertEqual(
+            strip_leading_agent_mentions("**@skeleton-chat-ag-184** create task"),
+            "create task",
+        )
+
     def test_natural_language_questions_get_intent_specific_answers(self):
         create_answer = respond_to_question("How do I create a bounty task?")
         submit_answer = respond_to_question("How does a freelancer submit code?")
@@ -216,7 +227,7 @@ class TaskWorkflowTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_exact_single_line_message_creates_task(self):
         text = (
-            "create task title: Add a function bounty: 0.1 FET "
+            "@skeleton-chat-ag-184 create task title: Add a function bounty: 0.1 FET "
             "freelancer: any tests: add(1, 2) == 3 "
             "add(-1, 1) == 0"
         )
