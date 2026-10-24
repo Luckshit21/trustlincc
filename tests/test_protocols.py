@@ -13,11 +13,13 @@ from uagents_core.contrib.protocols.chat import ChatMessage, TextContent
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from protocols import (
+    HELP_TEXT,
     TASK_STORAGE_PREFIX,
     TestRunnerUnavailable,
     _send_test_request,
     handle_message,
     parse_task_request,
+    respond_to_question,
     run_submission_tests,
 )
 
@@ -47,6 +49,19 @@ def make_message(text):
 
 
 class TaskRequestTests(unittest.TestCase):
+    def test_natural_language_questions_get_intent_specific_answers(self):
+        create_answer = respond_to_question("How do I create a bounty task?")
+        submit_answer = respond_to_question("How does a freelancer submit code?")
+        approval_answer = respond_to_question("How does the approval process work?")
+        status_answer = respond_to_question("How can I check task status?")
+
+        self.assertIn("To create a task", create_answer)
+        self.assertIn("task owner cannot submit", submit_answer)
+        self.assertIn("Only the task owner", approval_answer)
+        self.assertIn("status TASK-<id>", status_answer)
+        self.assertEqual(len({create_answer, submit_answer, approval_answer, status_answer}), 4)
+        self.assertNotEqual(respond_to_question("hello there"), HELP_TEXT)
+
     def test_parses_task_and_test_specifications(self):
         task = parse_task_request(
             "create task\n"
@@ -216,6 +231,45 @@ class TaskWorkflowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(task["bounty"], "0.1 FET")
         self.assertEqual(task["freelancer"], "any")
         self.assertEqual(task["status"], "OPEN")
+
+    async def test_demo_runs_passing_and_failing_code_without_creating_a_task(self):
+        passing = await self.passing_result(
+            "def add(a, b): return a + b",
+            ["add(1, 2) == 3", "add(-1, 1) == 0"],
+        )
+        failing = {
+            "status": "completed",
+            "passed": False,
+            "tests_passed": 0,
+            "tests_total": 2,
+            "results": [
+                {"index": index, "expression": expression, "passed": False}
+                for index, expression in enumerate(
+                    ["add(1, 2) == 3", "add(-1, 1) == 0"],
+                    start=1,
+                )
+            ],
+        }
+        self.runner.side_effect = [passing, failing]
+
+        await handle_message(self.ctx, self.owner, make_message("demo"))
+
+        response = self.ctx.send.await_args_list[-1].args[1].text()
+        self.assertIn("Correct implementation: 2/2 passed (PASS)", response)
+        self.assertIn("Incorrect implementation: 0/2 passed (FAIL)", response)
+        self.assertIn("no task created", response)
+        self.assertEqual(self.runner.await_count, 2)
+        self.assertEqual(self.ctx.storage.values, {})
+
+    async def test_demo_reports_runner_unavailable_without_executing_locally(self):
+        self.runner.side_effect = TestRunnerUnavailable("runner is offline")
+
+        await handle_message(self.ctx, self.owner, make_message("demo"))
+
+        response = self.ctx.send.await_args_list[-1].args[1].text()
+        self.assertIn("Sandbox demo unavailable: runner is offline", response)
+        self.assertIn("No task was created and no code was executed locally", response)
+        self.assertEqual(self.ctx.storage.values, {})
 
     async def test_only_owner_can_approve_and_repeated_approval_is_blocked(self):
         task_id = await self.create_task()

@@ -43,7 +43,8 @@ HELP_TEXT = (
     "Submit code with `submit TASK-<id>` on the first line, then paste the code. "
     "Use `test TASK-<id>` to rerun the sandbox tests. After they pass, the task owner "
     "can use `approve TASK-<id>` or `hold TASK-<id>`. "
-    "Use `status TASK-<id>` to check a task."
+    "Use `status TASK-<id>` to check a task. Send `demo` to run a sandbox example "
+    "without creating a task."
 )
 
 bounty_protocol = Protocol(spec=chat_protocol_spec)
@@ -113,7 +114,7 @@ def parse_task_request(text: str) -> dict[str, Any]:
 
 def parse_command(text: str) -> tuple[str, str, str] | None:
     match = re.match(
-        r"^\s*(create\s+task|submit|approve|hold|status|test)\b([^\r\n]*)",
+        r"^\s*(create\s+task|submit|approve|hold|status|test|demo)\b([^\r\n]*)",
         text,
         re.I,
     )
@@ -276,6 +277,64 @@ def parse_selection(text: str) -> dict[str, str] | None:
     return None
 
 
+def respond_to_question(text: str) -> str:
+    normalized = re.sub(r"\s+", " ", text.strip().lower())
+
+    if normalized in {"help", "commands", "menu"} or re.search(
+        r"\b(show|list|give)\b.*\b(commands|help)\b", normalized
+    ):
+        return HELP_TEXT
+    if re.search(r"\b(create|open|post|make)\b.*\b(task|bounty)\b", normalized):
+        return (
+            "To create a task, send the title, simulated bounty, freelancer, and "
+            "one test expression per line. For example:\n"
+            "create task\n"
+            "title: Add a function\n"
+            "bounty: 0.1 FET\n"
+            "freelancer: any\n"
+            "tests:\n"
+            "add(1, 2) == 3\n"
+            "add(-1, 1) == 0"
+        )
+    if re.search(r"\b(submit|submission|freelancer|send code)\b", normalized):
+        return (
+            "A freelancer submits with `submit TASK-<id>` on the first line, then "
+            "the Python code below it. The task owner cannot submit to their own "
+            "task; use a different sender. Submissions run against the listed tests "
+            "in the configured isolated sandbox."
+        )
+    if re.search(r"\b(approve|approval|payment|pay|escrow|release)\b", normalized):
+        return (
+            "Only the task owner can approve or hold a submission, and approval is "
+            "blocked until the listed sandbox tests pass. Approval and bounty amounts "
+            "are simulated; no real escrow or payment occurs."
+        )
+    if re.search(r"\b(status|progress|task id|check task)\b", normalized):
+        return (
+            "Use `status TASK-<id>` to see a task's status and latest sandbox result. "
+            "Only its owner or submitter can view that status."
+        )
+    if re.search(r"\b(test|tests|sandbox|run code|execute)\b", normalized):
+        return (
+            "Submissions are checked only against the task's listed tests in a "
+            "network-disabled Modal sandbox. Use `test TASK-<id>` to rerun them. "
+            "Passing tests are not a security guarantee."
+        )
+    if re.search(r"\b(what can you do|who are you|your purpose|about you)\b", normalized):
+        return (
+            "I’m Trustlincc, a code-bounty workflow agent. I create tasks, receive "
+            "freelancer submissions, run listed tests in an isolated sandbox, and "
+            "let the owner review passing results. Try `demo` for a live sandbox "
+            "check. Payments are simulated."
+        )
+    return (
+        "I handle code-bounty tasks rather than general questions. I can create a "
+        "task, explain how to submit code, report task status, and describe the "
+        "simulated approval process. Send `help` for commands or `demo` to try the "
+        "sandbox."
+    )
+
+
 async def handle_message(ctx: Context, sender: str, msg: ChatMessage) -> None:
     await ctx.send(
         sender,
@@ -295,9 +354,44 @@ async def handle_message(ctx: Context, sender: str, msg: ChatMessage) -> None:
 
     parsed = parse_command(text)
     if parsed is None:
-        await ctx.send(sender, create_text_chat(HELP_TEXT))
+        await ctx.send(sender, create_text_chat(respond_to_question(text)))
         return
     command, argument, remainder = parsed
+
+    if command == "demo":
+        tests = ["add(1, 2) == 3", "add(-1, 1) == 0"]
+        examples = (
+            ("Correct implementation", "def add(a, b):\n    return a + b"),
+            ("Incorrect implementation", "def add(a, b):\n    return a - b"),
+        )
+        results: list[tuple[str, dict[str, Any]]] = []
+        try:
+            for label, code in examples:
+                results.append((label, await run_submission_tests(code, tests)))
+        except TestRunnerUnavailable as error:
+            await ctx.send(
+                sender,
+                create_text_chat(
+                    f"Sandbox demo unavailable: {error}\n"
+                    "No task was created and no code was executed locally."
+                ),
+            )
+            return
+
+        report = "\n".join(
+            f"{label}: {result['tests_passed']}/{result['tests_total']} passed "
+            f"({'PASS' if result['passed'] else 'FAIL'})"
+            for label, result in results
+        )
+        await ctx.send(
+            sender,
+            create_text_chat(
+                "Trustlincc sandbox demo (no task created; no funds move)\n"
+                f"{report}\n"
+                "The failing example would remain blocked from approval."
+            ),
+        )
+        return
 
     if command == "create task":
         try:

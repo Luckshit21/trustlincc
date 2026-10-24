@@ -133,6 +133,19 @@ Send `help` for the command guide. After sending a task request, expect a reply
 containing a `TASK-...` ID. If the reply is only generic help, verify the address
 and the target agent's message logs.
 
+### Run a recording-friendly demo
+
+On the hosted agent's Testing page, send:
+
+```text
+demo
+```
+
+This sends a fixed correct and incorrect `add` implementation to the configured
+Modal sandbox and displays both test results. It does not create a task or change
+task state, so it can be run by one person from one account. If the runner is
+unavailable, the agent reports that clearly; it never substitutes local execution.
+
 ### Create a task
 
 Send a multiline message like:
